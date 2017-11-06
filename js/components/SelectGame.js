@@ -20,8 +20,8 @@ class SelectGame extends Component {
   }
 
   pushQuestionsToFirebase() {
-    jsonWithQuestions.map(questionObject => {
-      firebaseDatabaseRef.ref('/questions').push().set(questionObject)
+    jsonWithQuestions.map((questionObject, index) => {
+      firebaseDatabaseRef.ref(`/questions/${index}`).set(questionObject)
     })
 
   }
@@ -31,7 +31,7 @@ class SelectGame extends Component {
     console.log(user.email);
     let game = {
       creator: {uid: user.uid, email: user.email},
-      state: 1
+      state: 0
     }
     firebaseDatabaseRef.ref('/games').push().set(game)
   }
@@ -64,15 +64,14 @@ class SelectGame extends Component {
             console.log(questionObject, 'questionObject');
           }).then(() => {
             const updateToGameWhenJoined = {
-              joiner: firebaseRef.auth().currentUser.uid,
-              state: 2,
+              joiner: firebaseRef.auth().currentUser.uid,              
               currentQuestion: questionObject,
               previousAnswers: {}
             }
             firebaseDatabaseRef.ref(`/games/${gameUid}`).update(updateToGameWhenJoined)
           })
         }
-      }            
+      }
     })
       this.props.changeCurrentGame(gameUid)
       this.props.navigation.navigate('QuestionScreen')

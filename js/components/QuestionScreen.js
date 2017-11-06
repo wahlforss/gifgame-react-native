@@ -22,15 +22,354 @@ class QuestionScreen extends Component {
       gifSelectedForMyself: 0,
       gifSelectForFriend: 0,
       waitingTurn: false,
-      displayingAnswers: false
+      displayingAnswers: false,
+      displayingQuestions: false,
+      displayingWaiting: true
 
     }
   }
 
-  componentDidMount() {
-    this.checkDisplayAnswers()
-    this.getCurrentQuestion()
+  fetchGameState() {
+    console.log('FETCHING GAME STATE');
+    //fetches game state and activates react on game state
+    firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
+
+      this.setState({
+        gameState: currentGame.val().state
+      }, () => {
+
+        this.reactOnGameState()
+      })
+    })
   }
+
+  setGameState(gameState) {
+    firebaseDatabaseRef.ref(`/games/${this.props.gameid}/state`).set(gameState)
+  }
+
+  fetchNewQuestion() {
+    //fetches a random question that is not already played in the game
+      let randomQuestionId = Math.floor(Math.random()*76)
+      //IMPLEMENT SOME SHIT TO GET RANDOM THAT HAS NOT BEEN TAKEN TOO LAZY NOW
+      let promises = []
+      promises.push(firebaseDatabaseRef.ref(`/questions/${randomQuestionId}`).once('value', (currentQuestion) => {
+        const questionToBePushed = {[randomQuestionId]:currentQuestion.val()}
+        promises.push(firebaseDatabaseRef.ref(`/games/${this.props.gameid}/questionsInGame/`).push().set(questionToBePushed))
+      }))
+
+      return Promise.all(promises)
+
+  }
+
+  fetchQuestion(whichQuestion) {
+    //Adds the latest question to state and then displays that question TODO: CHANGE STATE RECALL TO PROMISE
+    return (firebaseDatabaseRef.ref(`/games/${this.props.gameid}/questionsInGame`).orderByKey().limitToLast(whichQuestion).once('value', (snap) => {
+      const questionObject = Object.values(Object.values(snap.val())[0])[0]
+      const questionId = Object.keys(snap.val())[0]
+      this.setState({
+        question: questionObject.question,
+        gif1: questionObject.gif1,
+        gif2: questionObject.gif2,
+        gif3: questionObject.gif3,
+        questionId: questionId
+      }, () => {
+        this.displayQuestion()
+      })
+    }))
+  }
+
+  fetchQuestionForAnswer(whichQuestion) {
+    return (firebaseDatabaseRef.ref(`/games/${this.props.gameid}/questionsInGame`).orderByKey().limitToLast(whichQuestion).once('value', (snap) => {
+      const questionObject = Object.values(Object.values(snap.val())[0])[0]
+      const questionId = Object.keys(snap.val())[0]
+      this.setState({
+        question: questionObject.question,
+        gif1: questionObject.gif1,
+        gif2: questionObject.gif2,
+        gif3: questionObject.gif3,
+        questionId: questionId
+      }, () => {
+        this.displayAnswers()
+      })
+    }))
+  }
+
+  fetchAnswer(whichAnswer) {
+    //fetches latest answer and displays answers
+    firebaseDatabaseRef.ref(`/games/${this.props.gameid}/previousAnswers`).orderByKey().limitToLast(whichAnswer).once('value', (previousAnswers) => {
+      const { creatorAnswers, joinerAnswers } = Object.values(previousAnswers.val())[0]
+      this.setState({
+        creatorAnswers,
+        joinerAnswers
+      }, () => {
+        this.fetchQuestionForAnswer(whichAnswer)
+      })
+    })
+
+  }
+
+
+  displayQuestion() {
+
+
+
+    this.setState({
+      displayingQuestions: true,
+      displayingAnswers: false,
+      displayingWaiting: false
+    }, () => {
+      if (this.state.currentGifSelected === 3) {
+          this.gifSwiperAnswer.scrollByIndex(1)
+      } else if (this.state.currentGifSelected === 2) {
+        this.gifSwiperAnswer.scrollByIndex(2)
+      }
+    })
+  }
+
+  displayWaiting() {
+    this.setState({
+      displayingWaiting: true,
+      displayingAnswers: false,
+      displayingQuestions: false
+    })
+  }
+
+  displayAnswers() {
+    this.changeDisplayingAnswersGifs()
+
+
+
+  }
+
+
+
+  reactOnGameState() {
+    switch (this.state.gameState) {
+      case 0:
+        //Game starts
+        this.fetchNewQuestion().then(() => {
+        //   console.log('RUMPAN ÄR REN');
+        this.fetchQuestion(1)
+        this.setState({
+          gameState: 1
+        })
+        this.setGameState(1)
+        })
+        break;
+      case 1:
+        //Joiner first answer
+        this.fetchQuestion(1)
+        break;
+
+      case 2:
+        //Creator first answer
+        firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
+          if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
+            //user is joiner
+            this.displayWaiting()
+          } else {
+            //user is creator
+            this.fetchQuestion(1)
+          }
+        })
+        break;
+      case 3:
+        //Creator first disp
+        firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
+          if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
+            //user is joiner
+            this.displayWaiting()
+          } else {
+            //user is creator
+            this.fetchAnswer(1)
+          }
+        })
+
+        break;
+
+      case 4:
+        //Creator SECOND ANS
+        firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
+          if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
+            //user is joiner
+            this.displayWaiting()
+          } else {
+            //user is creator
+            this.fetchNewQuestion().then(() => {
+            this.fetchQuestion(1)
+            this.setState({
+              gameState: 5
+            })
+            this.setGameState(5)
+            })
+          }
+        })
+        break
+      case 5:
+        //Creator SECOND ANS
+        firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
+          if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
+            //user is joiner
+            this.displayWaiting()
+          } else {
+            //user is creator
+            this.fetchQuestion(1)
+          }
+        })
+        break
+      case 6:
+        //Joiner first disp
+        firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
+          if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
+            //user is joiner
+            this.fetchAnswer(2)
+          } else {
+            //user is creator
+            this.displayWaiting()
+          }
+        })
+        break
+      case 7:
+        //Joiner SECOND Answer
+        firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
+          if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
+            //user is joiner
+            this.fetchQuestion(1)
+          } else {
+            //user is creator
+            this.displayWaiting()
+          }
+        })
+        break
+      case 8:
+        //Joiner Second Disp
+        firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
+          if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
+            //user is joiner
+            this.fetchAnswer(1)
+          } else {
+            //user is creator
+            this.displayWaiting()
+          }
+        })
+        break
+      case 9:
+        //JOINER Third Fetch Ans
+        firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
+          if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
+            //user is joiner
+            this.fetchNewQuestion().then(() => {
+            this.fetchQuestion(1)
+            this.setState({
+              gameState: 10
+            })
+            this.setGameState(10)
+            })
+          } else {
+            //user is creator
+            this.displayWaiting()
+          }
+        })
+        break
+
+      case 10:
+        //JOINER THIRD ANS
+        firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
+          if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
+            //user is joiner
+            this.fetchQuestion(1)
+          } else {
+            //user is creator
+            this.displayWaiting()
+          }
+        })
+        break
+      case 11:
+        //Creator Second DISP
+        firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
+          if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
+            //user is joiner
+            this.displayWaiting()
+          } else {
+            //user is creator
+            this.fetchAnswer(2)
+          }
+        })
+        break
+      case 12:
+       //Creator third ANS
+       firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
+         if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
+           //user is joiner
+           this.displayWaiting()
+         } else {
+           //user is creator
+           this.fetchQuestion(1)
+         }
+       })
+       break
+      case 13:
+        //creator Third DISP
+        firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
+          if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
+            //user is joiner
+            this.displayWaiting()
+          } else {
+            //user is creator
+            this.fetchAnswer(1)
+          }
+        })
+        break
+      case 14:
+        //Creator fetch new Question
+        firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
+          if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
+            //user is joiner
+            this.displayWaiting()
+          } else {
+            //user is creator
+            this.fetchNewQuestion().then(() => {
+            this.fetchQuestion(1)
+            this.setState({
+              gameState: 15
+            })
+            this.setGameState(15)
+            })
+          }
+        })
+        break
+      case 15:
+        firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
+          if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
+            //user is joiner
+            this.displayWaiting()
+          } else {
+            //user is creator
+            this.fetchQuestion(1)
+          }
+        })
+        break
+      case 16:
+        this.setState({
+          gameState: 6
+        }, () => {
+          this.reactOnGameState()
+        })
+        this.setGameState(6)
+        break;
+      default:
+
+    }
+
+  }
+
+
+
+
+  componentDidMount() {
+    this.fetchGameState()
+  }
+
 
   checkDisplayAnswers() {
     firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
@@ -43,17 +382,6 @@ class QuestionScreen extends Component {
     })
   }
 
-  getCurrentQuestion() {
-    firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (questionSnapshot) => {
-      let questionObject = questionSnapshot.val().currentQuestion
-      this.setState({
-        question: questionObject.question,
-        gif1: questionObject.gif1,
-        gif2: questionObject.gif2,
-        gif3: questionObject.gif3
-      })
-    })
-  }
   renderGifSwiper() {
     if (this.state.gif1 && this.state.gif2 && this.state.gif3) {
       return (
@@ -63,6 +391,8 @@ class QuestionScreen extends Component {
           gif1={this.state.gif1}
           gif2={this.state.gif2}
           gif3={this.state.gif3}
+          displayAnswers={false}
+          ref={ref => (this.gifSwiperAnswer = ref)}
         />
       )
     }
@@ -84,17 +414,19 @@ class QuestionScreen extends Component {
           if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
             //User is joiner
             let previousAnswers = {
-              previousAnswers: {
                 joinerAnswers: {
                   guessFriendsGif: this.state.gifSelectForFriend,
                   myAnswer: this.state.gifSelectedForMyself
                 }
-              }
             }
-            firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).update(previousAnswers)
+            this.setGameState(this.state.gameState + 1)
             this.setState({
-              waitingTurn: true
+              gameState: this.state.gameState + 1
+            }, () => {
+              this.reactOnGameState()
             })
+
+            firebaseDatabaseRef.ref(`/games/${this.props.gameid}/previousAnswers/${this.state.questionId}`).update(previousAnswers)
           } else {
             //User is creator
             let previousAnswersCreator = {
@@ -103,11 +435,13 @@ class QuestionScreen extends Component {
                 myAnswer: this.state.gifSelectedForMyself
               }
             }
-            firebaseDatabaseRef.ref(`/games/${this.props.gameid}/previousAnswers`).update(previousAnswersCreator).then(() => {
-              this.displayAnswers()
+            this.setGameState(this.state.gameState + 1)
+            this.setState({
+              gameState: this.state.gameState + 1
+            }, () => {
+              this.reactOnGameState()
             })
-
-
+            firebaseDatabaseRef.ref(`/games/${this.props.gameid}/previousAnswers/${this.state.questionId}`).update(previousAnswersCreator)
           }
         })
       })
@@ -119,28 +453,90 @@ class QuestionScreen extends Component {
     }
   }
 
-  displayAnswers() {
-    this.props.dispatchDisplayAnswers()
+
+  changeDisplayingAnswersGifs() {
+    //changes the gifs to be displayed KORREKT
+    let currentDisplayingGif1 =  ''
+    let currentDisplayingGif2 =  ''
+    let currentDisplayingGif3 =  ''
     firebaseDatabaseRef.ref(`/games/${this.props.gameid}`).once('value', (currentGame) => {
-      const previousAnswers = currentGame.val().previousAnswers
-      if (firebaseRef.auth().currentUser.uid === currentGame.val().creator.uid) {
-        //Creator
-        this.setState({
-          displayingAnswersGuess: previousAnswers.creatorAnswers.guessFriendsGif,
-          displayingAnswersFriend: previousAnswers.joinerAnswers.myAnswer,
-        })
+      if (firebaseRef.auth().currentUser.uid === currentGame.val().joiner) {
+        //user is joiner
+        currentDisplayingGif1 =  'gif' + this.state.joinerAnswers.guessFriendsGif
+        currentDisplayingGif2 =  'gif' + this.state.creatorAnswers.myAnswer
+        currentDisplayingGif3 =  'gif' + this.state.creatorAnswers.guessFriendsGif
       } else {
-        //joiner
-        this.setState({
-          displayingAnswersGuess: previousAnswers.joinerAnswers.guessFriendsGif,
-          displayingAnswersFriend: previousAnswers.creatorAnswers.myAnswer
-        })
+        //user is creator
+        currentDisplayingGif1 =  'gif' + this.state.creatorAnswers.guessFriendsGif
+        currentDisplayingGif2 =  'gif' + this.state.joinerAnswers.myAnswer
+        currentDisplayingGif3 =  'gif' + this.state.joinerAnswers.guessFriendsGif
       }
+    }).then(() => {
+      //PROBLEM  -> STARTS AT PAST INDEX
+
+      const displayAnswersSubtitles = [
+            'Your guess',
+            "Friend's actual answer",
+            'Your friend guessed you picked'
+        ]
+      this.setState({
+        currentDisplayingGif1: this.state[currentDisplayingGif1],
+        currentDisplayingGif2: this.state[currentDisplayingGif2],
+        currentDisplayingGif3: this.state[currentDisplayingGif3],
+        displayingAnswers: true,
+        displayingWaiting: false,
+        displayingQuestions: false,
+        currentDisplayingAnswerGif: 1,
+        displayAnswersSubtitles
+      }, () => {
+        if (this.state.currentGifSelected === 3) {
+            this.gifSwiperAnswer.scrollByIndex(1)
+        } else if (this.state.currentGifSelected === 2) {
+          this.gifSwiperAnswer.scrollByIndex(2)
+        }
+      })
     })
+
   }
 
+  renderGifSwiperAnswers() {
+    if(this.state.currentDisplayingGif1) {
+    return (
+
+        <GifSwiper
+          gifArray={[this.state.gif1,this.state.gif2,this.state.gif3]}
+          indexChanged={this.indexChanged.bind(this)}
+          gif1={this.state.currentDisplayingGif1}
+          gif2={this.state.currentDisplayingGif2}
+          gif3={this.state.currentDisplayingGif3}
+          displayAnswers={true}
+          ref={ref => (this.gifSwiperAnswer = ref)}
+        />
+      )
+    }
+
+  }
+  changeDisplayingAnswerGif() {
+    if (this.state.currentDisplayingAnswerGif === 3 ) {
+      this.gifSwiperAnswer.scrollByIndex(1)
+      this.setGameState(this.state.gameState + 1)
+      this.setState({
+        gameState: this.state.gameState + 1
+      }, () => {
+        this.reactOnGameState()
+      })
+
+    } else {
+      this.setState({
+        currentDisplayingAnswerGif: this.state.currentDisplayingAnswerGif + 1
+      }, () => {
+        console.log(this.state.gif2, 'displaying gif!');
+        this.gifSwiperAnswer.scrollByIndex(1)
+      })
+    }
+  }
   renderView() {
-    if (this.props.displayAnswers) {
+    if (this.state.displayingAnswers) {
       return (
         <Container style={styles.container}>
           <StatusBar
@@ -148,13 +544,24 @@ class QuestionScreen extends Component {
             barStyle="light-content"
           />
           <View style={styles.header}>
-            <Text style={styles.question}>you guessed {this.state.displayingAnswersGuess}</Text>
-            <Text style={styles.question}> your friend answered {this.state.displayingAnswersFriend}</Text>
+            <Text style={styles.question}>
+              {this.state.question}
+            </Text>
+            <Button
+              style={styles.button}
+              onPress={this.changeDisplayingAnswerGif.bind(this)}
+            >
+              <Text style={styles.buttonText}>Next answer</Text>
+            </Button>
+            <Text style={styles.question}>{this.state.displayAnswersSubtitles[this.state.currentDisplayingAnswerGif - 1]}</Text>
+          </View>
+          <View style={styles.gifView}>
+            {this.renderGifSwiperAnswers()}
           </View>
         </Container>
       )
 
-    } else if (!this.state.waitingTurn) {
+    } else if (this.state.displayingQuestions) {
       return (
         <Container style={styles.container}>
           <StatusBar
@@ -170,7 +577,7 @@ class QuestionScreen extends Component {
               style={styles.button}
               onPress={this.onSelectGifPress.bind(this)}
             >
-              <Text style={styles.buttonText}>{this.state.selectFriendGif ? 'friend 100000%' : 'OMG this is me!'}</Text>
+              <Text style={styles.buttonText}>{this.state.selectFriendGif ? 'This is my friend 100000%' : 'OMG this is me!'}</Text>
             </Button>
           </View>
           <View style={styles.gifView}>
@@ -178,7 +585,7 @@ class QuestionScreen extends Component {
           </View>
         </Container>
           )
-          } else {
+        } else if (this.state.displayingWaiting) {
             return (
               <Container style={styles.container}>
                 <StatusBar
@@ -186,7 +593,7 @@ class QuestionScreen extends Component {
                   barStyle="light-content"
                 />
                 <View style={styles.header}>
-                  <Text style={styles.question}>Waiting for friend</Text>
+                  <Text style={styles.question}>Waiting</Text>
                 </View>
               </Container>
             )
@@ -213,13 +620,28 @@ const styles = StyleSheet.create({
   },
   question: {
     color: 'white',
-    fontSize: 30,
+    fontSize: 25,
+    marginBottom: 20,
+    textAlign: 'center'
+  },
+  answerTime: {
+    marginTop: 30,
+    marginBottom: 10,
+    color: 'white',
+    fontSize: 20,
     textAlign: 'center'
   },
   gifView: {
     flex: 1,
-    backgroundColor: 'white',
     alignItems: 'center'
+  },
+  displayingGifAnswers: {
+    height: 50,
+    width: 50,
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'white',
   },
   button: {
     backgroundColor: 'white',

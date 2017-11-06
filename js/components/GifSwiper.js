@@ -53,6 +53,7 @@ const rightArrow = (
 
 export default class GifSwiper extends Component {
   //onIndexChanged={(index) => this.props.indexChanged(index)}
+  //click button in qscreen that activates scrollby here
 
   logIndex() {
     if(this.swiper) {
@@ -60,14 +61,20 @@ export default class GifSwiper extends Component {
       this.props.indexChanged(currentGifSelected)
     }
   }
+
+  scrollByIndex(i) {
+    this.swiper.scrollBy(i)
+  }
+
   render() {
     return (
       <Swiper
         style={styles.wrapper}
-        showsButtons={true}
+        showsButtons={true && !this.props.displayAnswers}
         dotColor={'#CACACA'}
         activeDotColor={'white'}
         paginationStyle={styles.pagination}
+        index={0}
         nextButton={rightArrow}
         prevButton={leftArrow}
         onMomentumScrollEnd={(state) => this.logIndex()}
